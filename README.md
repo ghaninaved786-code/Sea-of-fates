@@ -5,8 +5,7 @@ An anime-inspired open-world pirate RPG concept by Naved "Lone" Ghani.
 This is a small playable prototype of its core hook, the Fate hunt.
 
 ## Play it
-https://YOUR-USERNAME.github.io/sea-of-fates/
-
+https://ghaninaved786-code.github.io/Sea-of-fates/
 ## The idea
 Every player is assigned one target and is hunted by someone else, and you never know who. Hunting is optional. Information is your defense.
 
