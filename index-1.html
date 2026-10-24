@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sea of Fates: Prototype</title>
+<style>
+:root{--bg:#e6eef0;--ink:#12303d;--sea:#cfe0e6;--rock:#8aa5af;--me:#0b6e8a;--bot:#6c7f88;--bad:#b5382c;--btn:#12303d;--btnink:#e6eef0;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0d1a22;--ink:#d7e6ea;--sea:#14303c;--rock:#2c5666;--me:#4cc2e0;--bot:#8aa0a8;--bad:#ff7a66;--btn:#d7e6ea;--btnink:#0d1a22;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0d1a22;--ink:#d7e6ea;--sea:#14303c;--rock:#2c5666;--me:#4cc2e0;--bot:#8aa0a8;--bad:#ff7a66;--btn:#d7e6ea;--btnink:#0d1a22;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:Georgia,"Times New Roman",serif}
+main{max-width:860px;margin:0 auto;padding:12px}
+h1{font-size:1.15rem;margin:0 0 4px}
+#msg{min-height:2.6em;font-size:1rem;line-height:1.3}
+#near{min-height:1.3em;color:var(--bad);font-weight:bold}
+#hud{font-size:.9rem;margin:2px 0 8px}
+canvas{display:block;width:100%;height:auto;background:var(--sea);border:2px solid var(--ink);touch-action:none}
+.row{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+button{font:inherit;font-size:1rem;padding:12px 16px;min-height:46px;border:2px solid var(--ink);background:var(--btn);color:var(--btnink);border-radius:4px;flex:1 1 120px}
+button[hidden]{display:none}
+.how{font-size:.85rem;line-height:1.4;margin:10px 0 0}
+.how summary{cursor:pointer;font-weight:bold}
+.how ul{margin:6px 0 0;padding-left:18px}
+#ov .how{margin:0}
+#ov,#ac{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px;z-index:5}
+#ov[hidden],#ac[hidden]{display:none}
+.box{background:var(--bg);color:var(--ink);border:2px solid var(--ink);padding:18px;max-width:340px;width:100%;display:flex;flex-direction:column;gap:10px}
+.box h2{margin:0;font-size:1.1rem}
+.box p{margin:0;font-size:.85rem;line-height:1.4}
+#nm,#an,#fc{font:inherit;font-size:1rem;padding:10px;border:2px solid var(--ink);background:var(--sea);color:var(--ink)}
+#lb{white-space:pre-line;font-size:.9rem;margin:0 0 8px}
+</style>
+</head>
+<body>
+<main>
+<h1>Sea of Fates: Fate hunt</h1>
+<div id="msg"></div>
+<div id="near"></div>
+<div id="hud"></div>
+<div id="lb"></div>
+<canvas id="c" width="800" height="520"></canvas>
+<div class="row">
+<button id="bA">Attack target (E)</button>
+<button id="bS">Ask the Saint (F)</button>
+<button id="bC">Accuse (G)</button>
+<button id="bP">Plunder (T)</button>
+<button id="bN" hidden>New target (H)</button>
+<button id="bR" hidden>Restart (R)</button>
+</div>
+<details id="howbox" class="how"><summary>How to play</summary><div id="how"><ul>
+<li>Move: drag on the map, or use WASD / arrow keys. You are the blue circle.</li>
+<li>One bot is your target and a different bot is secretly hunting you. All bots look alike.</li>
+<li>Attack (E): get close to your target and strike. It is optional. After a kill, take a new target (H) or keep exploring.</li>
+<li>Ask the Saint (F): shows how far away your hunter is, with no direction. It can be used every 30 seconds.</li>
+<li>Accuse (G): type the name of your hunter. If you are right they fall. If you are wrong, you fall.</li>
+<li>If your hunter touches you, you lose. Be the last one standing to win.</li>
+<li>Pirate: plunder gold from others (T). Navy: sees pirates and hunts them. Celestial: when you are attacked, someone else dies instead.</li>
+<li>Your name, faction, gold, and kills are saved in this browser.</li>
+</ul></div></details>
+</main>
+<div id="ac" hidden><div class="box"><h2>Name your enemy</h2><input id="an" maxlength="16" autocomplete="off" placeholder="Name of your hunter"><button id="ag">Accuse</button><button id="ax">Cancel</button><p>If you are right, your hunter falls. If you are wrong, you fall.</p></div></div>
+<div id="ov"><div class="box"><h2>Choose your name</h2><div id="ovhow"></div><input id="nm" maxlength="16" placeholder="Your pirate name" autocomplete="off"><select id="fc"><option value="P">Pirate: plunder gold from others</option><option value="N">Navy: sees pirates and hunts them</option><option value="C">Celestial: an attack on you kills someone else</option></select><button id="go">Join the sea</button><p>Other players see your name and score. Both are removed when you leave.</p></div></div>
+<script>
+const cv=document.getElementById('c'),g=cv.getContext('2d'),W=800,H=520;
+const $=id=>document.getElementById(id);
+const obs=[[160,120,120,30],[520,90,30,150],[300,330,160,30],[620,360,30,120]];
+const blocked=(x,y,r)=>x<r||y<r||x>W-r||y>H-r||obs.some(o=>x>o[0]-r&&x<o[0]+o[2]+r&&y>o[1]-r&&y<o[1]+o[3]+r);
+const rnd=(a,b)=>a+Math.random()*(b-a);
+const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+const NEAR=150,REACH=55,SAINT_CD=30,KEYS={};
+let room=null,P={x:400,y:260},alive=true,tgId=null,choice=false,sCd=0,sRead=null,msgT=0,ptr=null,last=0,clock=0,seq=0,seen={},peers=[],list=[],lastHit=null,myName='',kills=0,bots=[],btg=null,bhn=null,seq2=0,seenA={},won=false,hadRivals=false,myF='P',gold=50,pCd=0,pseq=0,sseq=0,seenP={},seenS={};
+const lab=p=>String(p.presence.nm||('Sailor '+p.peer.slice(0,3))).slice(0,16);
+function free(){let x,y;do{x=rnd(30,W-30);y=rnd(30,H-30)}while(blocked(x,y,14));return{x,y}}
+function say(t,s){$('msg').textContent=t;msgT=s?clock+s:0}
+function push(extra){if(room&&myName)room.presence(Object.assign({x:Math.round(P.x),y:Math.round(P.y),alive,nm:myName,k:kills,f:myF,g:gold},extra||{})).catch(()=>{})}
+function spawn(){Object.assign(P,free());alive=true;won=false;hadRivals=false;choice=false;tgId=null;sRead=null;push();say('You are in. Find your target before your hunter finds you.',5)}
+function byId(id){return list.find(p=>p.peer===id)}
+function ring(){const me=peers.find(p=>p.sameTab);
+ list=peers.filter(p=>p.kind==='viewer'&&p.presence.alive===true&&typeof p.presence.x==='number'&&p.presence.nm).sort((a,b)=>a.peer<b.peer?-1:1);
+ const i=me?list.findIndex(p=>p.peer===me.peer):-1;return{me,i}}
+function die(m){alive=false;push();say(m||'Fate fulfilled. Someone struck you down.')}
+function move(o,dx,dy,sp,dt){const l=Math.hypot(dx,dy);if(!l)return;dx/=l;dy/=l;
+ const nx=o.x+dx*sp*dt,ny=o.y+dy*sp*dt;if(!blocked(nx,o.y,12))o.x=nx;if(!blocked(o.x,ny,12))o.y=ny}
+function struck(by,msg){if(myF==='C'){const o=list.filter(p=>!p.sameTab),c=o.filter(p=>p.peer!==by),pool=c.length?c:o;
+ if(pool.length){const pk=pool[Math.floor(Math.random()*pool.length)];sseq++;push({sub:pk.peer,sseq});say('Your blessing passed death to '+lab(pk)+'.',5);return}}die(msg)}
+function plunder(){if(!alive||won||myF!=='P')return;if(pCd>0){say('Plunder ready in '+Math.ceil(pCd)+'s.',3);return}
+ let bd=REACH;
+ if(bots.length){let best=null;for(const b of bots)if(b.alive&&dist(b,P)<bd){bd=dist(b,P);best=b}
+  if(best){const t=Math.min(10,best.g);best.g-=t;gold+=t;pCd=8;push();say('You plundered '+t+' gold from '+best.n+'.',4)}else say('No one in reach.',3);return}
+ let bp=null;for(const p of list){if(p.sameTab)continue;const d=dist(p.presence,P);if(d<bd){bd=d;bp=p}}
+ if(bp){pseq++;pCd=8;gold+=10;push({pl:bp.peer,pseq});say('You plundered '+lab(bp)+'.',4)}else say('No one in reach.',3)}
+function win(){won=true;say('You won! Everyone else has fallen.')}
+function checkWin(){if(bots.length&&bots.every(b=>!b.alive))win()}
+function startBots(){bots=[];for(let k=0;k<5;k++){let p;do{p=free()}while(dist(p,P)<220);bots.push({n:'Bot '+(k+1),x:p.x,y:p.y,alive:true,g:50,f:k%2?'N':'P',wx:p.x,wy:p.y,wt:0,mode:'wander',mt:rnd(2,4)})}
+ const a=bots.map((_,k)=>k).sort(()=>Math.random()-.5);bhn=bots[a[1]];btg=(myF==='N'?bots.find(b=>b.f==='P'&&b!==bhn):null)||bots[a[0]];choice=false;tgId=null;say('No other players yet, so 5 bots fill the sea. Your target is '+btg.n+'. Someone else is hunting you.',6)}
+function stopBots(){bots=[];btg=null;bhn=null;choice=false;tgId=null}
+function stepBots(dt){for(const b of bots){if(!b.alive)continue;let sp=45,tx=b.wx,ty=b.wy;
+ if(b===bhn){b.mt-=dt;if(b.mt<=0){b.mode=b.mode==='chase'?'wander':'chase';b.mt=b.mode==='chase'?rnd(5,9):rnd(2,4)}if(b.mode==='chase'){tx=P.x;ty=P.y;sp=62}}
+ b.wt-=dt;if(b.mode==='wander'||b!==bhn){if(b.wt<=0||Math.hypot(tx-b.x,ty-b.y)<8){const p=free();b.wx=p.x;b.wy=p.y;b.wt=rnd(2,5)}tx=b.wx;ty=b.wy}
+ const ox=b.x,oy=b.y;move(b,tx-b.x,ty-b.y,sp,dt);if(b.x===ox&&b.y===oy){const p=free();b.wx=p.x;b.wy=p.y}}
+ if(bhn&&dist(bhn,P)<20){if(myF==='C'){const c=bots.filter(b=>b.alive&&b!==bhn);if(c.length){const v=c[Math.floor(Math.random()*c.length)];v.alive=false;let q;do{q=free()}while(dist(q,P)<250);bhn.x=q.x;bhn.y=q.y;bhn.mode='wander';bhn.mt=6;say('Your blessing passed death to '+v.n+'.',5);checkWin();return}}die('Fate fulfilled. '+bhn.n+' was your hunter.')}}
+function step(dt){
+ clock+=dt;if(msgT&&clock>msgT){$('msg').textContent='';msgT=0}
+ peers=room?room.peers():[];const{me,i}=ring();const n=list.length;
+ if(alive&&!won&&n>=2)hadRivals=true;
+ if(alive&&!won&&hadRivals&&n===1&&peers.some(p=>p.kind==='viewer'&&!p.sameTab&&p.presence.nm&&p.presence.alive===false))win();
+ const solo=alive&&myName&&!won&&n<2;if(solo&&!bots.length)startBots();else if(!solo&&bots.length)stopBots();
+ if(alive&&!won){let dx=0,dy=0;
+  if(KEYS.a||KEYS.arrowleft)dx--;if(KEYS.d||KEYS.arrowright)dx++;
+  if(KEYS.w||KEYS.arrowup)dy--;if(KEYS.s||KEYS.arrowdown)dy++;
+  if(ptr&&!dx&&!dy){const ex=ptr.x-P.x,ey=ptr.y-P.y;if(Math.hypot(ex,ey)>8){dx=ex;dy=ey}}
+  const ox=P.x,oy=P.y;move(P,dx,dy,150,dt);if(P.x!==ox||P.y!==oy)push();
+  if(bots.length)stepBots(dt);
+  if(n>=2&&i>=0){
+   if(!tgId&&!choice){const pr=myF==='N'?list.find(p=>!p.sameTab&&p.presence.f==='P'):null;tgId=(pr||list[(i+1)%n]).peer}
+   if(tgId&&!byId(tgId)){if(lastHit&&lastHit.id===tgId&&clock-lastHit.t<3){kills++;push();say('Target eliminated. Take a new target, or keep exploring.')}else say('Your target is gone. Take a new target, or keep exploring.');tgId=null;choice=true;lastHit=null}}
+  if(me)for(const p of peers){if(p.peer===me.peer)continue;const a=p.presence;
+   if(!(p.peer in seenA))seenA[p.peer]=a.aseq;else if(a.acc===me.peer&&a.aseq!==seenA[p.peer]){seenA[p.peer]=a.aseq;struck(p.peer,'Fate fulfilled. You were exposed by an accusation.');break}else seenA[p.peer]=a.aseq;
+   if(!(p.peer in seenP))seenP[p.peer]=a.pseq;else if(a.pl===me.peer&&a.pseq!==seenP[p.peer]){seenP[p.peer]=a.pseq;gold=Math.max(0,gold-10);say('A pirate plundered you.',3);push()}else seenP[p.peer]=a.pseq;
+   if(!(p.peer in seenS))seenS[p.peer]=a.sseq;else if(a.sub===me.peer&&a.sseq!==seenS[p.peer]){seenS[p.peer]=a.sseq;die('Fate fulfilled. A Celestial passed their death to you.');break}else seenS[p.peer]=a.sseq;
+   if(!(p.peer in seen)){seen[p.peer]=a.seq;continue}
+   if(a.atk===me.peer&&a.seq!==seen[p.peer]){seen[p.peer]=a.seq;if(typeof a.x==='number'&&dist(a,P)<REACH+25){struck(p.peer);break}}
+   else seen[p.peer]=a.seq}}
+ if(sCd>0)sCd=Math.max(0,sCd-dt);if(pCd>0)pCd=Math.max(0,pCd-dt);
+ sync(n,i);
+}
+function hunter(){const{i}=ring();return list.length>=2&&i>=0?list[(i-1+list.length)%list.length]:null}
+function sync(n,i){
+ const t=byId(tgId),bt=btg&&btg.alive?btg:null,near=alive&&((t&&dist(t.presence,P)<NEAR)||(bt&&dist(bt,P)<NEAR));
+ $('near').textContent=near?'Your target is nearby':'';
+ let s='Solo game with bots';
+ 
+ if(t)s+='   Target: '+lab(t);else if(bt)s+='   Target: '+bt.n;
+ s+='   Saint: '+(sCd>0?Math.ceil(sCd)+'s':'ready');if(sRead!==null)s+='   Hunter was '+sRead+' m away at last reading';
+ const all=[{n:myName+' (you)',k:kills,g:gold,a:alive}].concat(bots.map(b=>({n:b.n,k:0,g:b.g,a:b.alive}))).sort((x,y)=>y.k-x.k||y.g-x.g).map((r,j)=>(j+1)+'. '+r.n+'  '+r.k+' kills, '+r.g+' gold'+(r.a?'':' (down)'));
+ $('lb').textContent=myName?'Scoreboard\n'+all.join('\n'):'';
+ s+='   '+({P:'Pirate',N:'Navy',C:'Celestial'}[myF])+'   Gold: '+gold;$('hud').textContent=s;$('bN').hidden=!(choice&&alive&&!won);$('bR').hidden=alive&&!won;$('bC').hidden=!alive||won;$('bP').hidden=!alive||won||myF!=='P'}
+function attack(){if(!alive)return;if(bots.length){if(!btg||!btg.alive){say('You have no target.',3);return}
+ if(dist(btg,P)<REACH){btg.alive=false;kills++;push();choice=true;btg=null;say('Target eliminated. Take a new target, or keep exploring.');checkWin()}else say('Too far. Get closer to '+btg.n+'.',3);return}
+ const t=byId(tgId);
+ if(!t){say('You have no target.',3);return}
+ if(dist(t.presence,P)<REACH){seq++;lastHit={id:t.peer,t:clock};push({atk:t.peer,seq});say('You struck '+lab(t)+'.',4)}else say('Too far. Get closer to '+lab(t)+'.',3)}
+function saint(){if(!alive)return;
+ if(sCd>0){say('The Saint needs '+Math.ceil(sCd)+' more seconds.',3);return}
+ if(bhn){sRead=Math.round(dist(bhn,P)/10);sCd=SAINT_CD;say('The Saint says your hunter is '+sRead+' m away. No direction.',5);return}
+ const h=hunter();if(!h){say('The Saint sees no hunter yet.',3);return}
+ sRead=Math.round(dist(h.presence,P)/10);sCd=SAINT_CD;say('The Saint says your hunter is '+sRead+' m away. No direction.',5)}
+function newTarget(){if(!choice||!alive)return;
+ if(bots.length){const c=bots.filter(b=>b.alive&&b!==bhn);if(!c.length){say('No one is left to hunt.',4);choice=false;return}const pr=myF==='N'?c.find(b=>b.f==='P'):null;btg=pr||c[Math.floor(Math.random()*c.length)];choice=false;say('New target: '+btg.n+'.',4);return}
+ const{i}=ring();
+ if(list.length<2||i<0){say('No one else is playing.',3);return}
+ {const pr=myF==='N'?list.find(p=>!p.sameTab&&p.presence.f==='P'&&p.peer!==tgId):null;tgId=(pr||list[(i+1)%list.length]).peer}choice=false;say('New target: '+lab(byId(tgId))+'.',4)}
+function openAccuse(){if(!alive||!$('ov').hidden)return;$('an').value='';$('ac').hidden=false;$('an').focus()}
+function accuse(){const v=$('an').value.trim().toLowerCase();if(!v)return;
+ if(bots.length){$('ac').hidden=true;if(bhn&&v===bhn.n.toLowerCase()){bhn.alive=false;kills++;push();const c=bots.filter(b=>b.alive&&b!==btg&&b!==bhn);bhn=c.length?c[Math.floor(Math.random()*c.length)]:null;say('Correct. Your hunter fell.'+(bhn?' Another has taken their place.':''),5);checkWin()}else die('Wrong accusation. Fate struck you down.');return}
+ const h=hunter();if(!h){$('ac').hidden=true;say('No one is hunting you yet.',3);return}
+ $('ac').hidden=true;if(v===lab(h).toLowerCase()){seq2++;kills++;push({acc:h.peer,aseq:seq2});say('Correct. Your hunter fell.',5)}else die('Wrong accusation. Fate struck you down.')}
+$('bA').onclick=attack;$('bC').onclick=openAccuse;$('bP').onclick=plunder;$('ag').onclick=accuse;$('ax').onclick=()=>{$('ac').hidden=true};$('an').addEventListener('keydown',e=>{if(e.key==='Enter')accuse()});$('bS').onclick=saint;$('bN').onclick=newTarget;$('bR').onclick=spawn;
+addEventListener('keydown',e=>{if(e.target.id==='nm'||e.target.id==='an')return;const k=e.key.toLowerCase();KEYS[k]=true;
+ if(k==='e')attack();if(k==='g')openAccuse();if(k==='t')plunder();if(k==='f')saint();if(k==='h')newTarget();if(k==='r'&&(!alive||won))spawn();
+ if(k.startsWith('arrow'))e.preventDefault()});
+addEventListener('keyup',e=>{KEYS[e.key.toLowerCase()]=false});
+function pt(e){const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left)*W/r.width,y:(e.clientY-r.top)*H/r.height}}
+cv.addEventListener('pointerdown',e=>{ptr=pt(e);cv.setPointerCapture(e.pointerId)});
+cv.addEventListener('pointermove',e=>{if(ptr)ptr=pt(e)});
+['pointerup','pointercancel'].forEach(t=>cv.addEventListener(t,()=>{ptr=null}));
+function col(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()}
+function draw(){
+ const rock=col('--rock'),ink=col('--ink'),me=col('--me'),bot=col('--bot'),bad=col('--bad');
+ g.clearRect(0,0,W,H);g.fillStyle=rock;obs.forEach(o=>g.fillRect(o[0],o[1],o[2],o[3]));
+ g.font='12px Georgia';g.textAlign='center';
+ for(const p of list){if(p.sameTab)continue;const a=p.presence;
+  g.fillStyle=bot;g.beginPath();g.arc(a.x,a.y,10,0,7);g.fill();g.fillStyle=ink;g.fillText(lab(p)+(myF==='N'&&a.f==='P'?' (Pirate)':''),a.x,a.y-16);if(myF==='N'&&a.f==='P'){g.strokeStyle=bad;g.lineWidth=1;g.setLineDash([4,3]);g.beginPath();g.arc(a.x,a.y,14,0,7);g.stroke();g.setLineDash([])}
+  if(p.peer===tgId&&alive&&dist(a,P)<NEAR){g.strokeStyle=bad;g.lineWidth=2;g.beginPath();g.arc(a.x,a.y,15,0,7);g.stroke()}}
+ for(const b of bots){if(!b.alive)continue;g.fillStyle=bot;g.beginPath();g.arc(b.x,b.y,10,0,7);g.fill();g.fillStyle=ink;g.fillText(b.n+(myF==='N'&&b.f==='P'?' (Pirate)':''),b.x,b.y-16);if(myF==='N'&&b.f==='P'){g.strokeStyle=bad;g.lineWidth=1;g.setLineDash([4,3]);g.beginPath();g.arc(b.x,b.y,14,0,7);g.stroke();g.setLineDash([])}
+  if(b===btg&&alive&&dist(b,P)<NEAR){g.strokeStyle=bad;g.lineWidth=2;g.beginPath();g.arc(b.x,b.y,15,0,7);g.stroke()}}
+ g.fillStyle=alive?me:bad;g.beginPath();g.arc(P.x,P.y,11,0,7);g.fill()}
+function loop(t){const dt=Math.min(.05,(t-last)/1000||0);last=t;step(dt);draw();requestAnimationFrame(loop)}
+function start(){const v=$('nm').value.replace(/[^\p{L}\p{N} _-]/gu,'').trim().slice(0,16);if(!v){$('nm').focus();return}myName=v;myF=$('fc').value;save();$('ov').hidden=true;push()}
+$('go').onclick=start;$('nm').addEventListener('keydown',e=>{if(e.key==='Enter')start()});
+function save(){if(!myName)return;try{localStorage.setItem('sof',JSON.stringify({n:myName,f:myF,g:gold,k:kills}))}catch(e){}}
+function load(){try{const d=JSON.parse(localStorage.getItem('sof')||'null');if(d){if(d.n)$('nm').value=d.n;if(d.f)$('fc').value=d.f;gold=+d.g||50;kills=+d.k||0}}catch(e){}}
+$('ovhow').innerHTML='<details open class="how"><summary>How to play</summary>'+$('how').innerHTML+'</details>';
+load();spawn();requestAnimationFrame(loop);setInterval(save,5000);
+
+</script>
+</body>
+</html>
